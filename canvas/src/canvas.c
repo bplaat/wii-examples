@@ -83,6 +83,8 @@ void canvas_draw_image(GXTexObj *texture, float x, float y, float width, float h
     GX_Color1u32(color);
     GX_TexCoord2f32(0, 0);
     GX_End();
+
+    GX_Flush();
 }
 
 void canvas_fill_text(char *text, float x, float y, float text_size, uint32_t color) {
@@ -108,10 +110,10 @@ void canvas_fill_text(char *text, float x, float y, float text_size, uint32_t co
         GX_LoadPosMtxImm(matrix, GX_PNMTX0);
 
         // Draw character
-        float left = font_char->x / 433.f;
-        float top = font_char->y / 433.f;
-        float right = (font_char->x + font_char->width) / 433.f;
-        float bottom = (font_char->y + font_char->height) / 433.f;
+        float left = font_char->x / 436.f;
+        float top = font_char->y / 436.f;
+        float right = (font_char->x + font_char->width) / 436.f;
+        float bottom = (font_char->y + font_char->height) / 436.f;
         GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
         GX_Position2f32(0.5, -0.5);
         GX_Color1u32(color);
@@ -126,6 +128,8 @@ void canvas_fill_text(char *text, float x, float y, float text_size, uint32_t co
         GX_Color1u32(color);
         GX_TexCoord2f32(left, top);
         GX_End();
+
+        GX_Flush();
 
         x += font_char->xadvance * scale;
         c++;

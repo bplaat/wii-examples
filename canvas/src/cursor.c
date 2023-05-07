@@ -21,17 +21,28 @@ void cursor_init(void) {
 }
 
 void cursor_update(void) {
+    // Read cursors state
     WPAD_ScanPads();
-
-    ir_t ir;
-    WPAD_IR(0, &ir);
-    cursors[0].x = ir.x;
-    cursors[0].y = ir.y;
-
-    uint32_t buttonsHeld = WPAD_ButtonsDown(0);
-    cursors[0].click = (buttonsHeld & WPAD_BUTTON_A) != 0;
+    for (int32_t i = 0; i < 4; i++) {
+        Cursor *cursor = &cursors[i];
+        cursor->enabled = true; // TODO
+        ir_t ir;
+        WPAD_IR(i, &ir);
+        cursor->x = ir.x;
+        cursor->y = ir.y;
+        cursor->angle = ir.angle;
+        cursor->buttons_held = WPAD_ButtonsHeld(i);
+    }
 }
 
 void cursor_render(void) {
-    canvas_draw_image(&cursors[0].texture, cursors[0].x - 96 / 2, cursors[0].y - 96 / 2, 96, 96, 0xffffffff);
+    // Draw enabled cursors on screen
+    for (int32_t i = 0; i < 4; i++) {
+        Cursor *cursor = &cursors[i];
+        if (cursor->enabled) {
+            guMtxRotDeg(canvas.transform_matrix, 'z', cursor->angle);
+            canvas_draw_image(&cursor->texture, cursor->x - 96 / 2, cursor->y - 96 / 2, 96, 96, 0xffffffff);
+        }
+    }
+    guMtxIdentity(canvas.transform_matrix);
 }

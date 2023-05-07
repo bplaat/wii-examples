@@ -192,6 +192,8 @@ int main(void) {
             GX_Position3f32(1.0f, 1.0f, 1.0f);
             GX_TexCoord2f32(0.0f, 1.0f);
             GX_End();
+
+            GX_Flush();
         }
 
         // ### Draw HUD ###
@@ -234,6 +236,6 @@ int main(void) {
     }
 
     // Power off console
-    SYS_ResetSystem(SYS_POWEROFF, 0, 0);
+    // SYS_ResetSystem(SYS_POWEROFF, 0, 0);
     return 0;
 }

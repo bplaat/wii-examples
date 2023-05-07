@@ -5,9 +5,11 @@
 #include <stdint.h>
 
 typedef struct Cursor {
+    bool enabled;
     int32_t x;
     int32_t y;
-    bool click;
+    int32_t angle;
+    uint32_t buttons_held;
     GXTexObj texture;
 } Cursor;
 
