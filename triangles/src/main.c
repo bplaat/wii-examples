@@ -10,7 +10,6 @@
 #define DEFAULT_FIFO_SIZE (256 * 1024)
 
 GXRModeObj *screenmode;
-bool running = true;
 
 // Triangle display list
 // clang-format off
@@ -25,6 +24,9 @@ _Alignas(32) uint8_t triangle_list[32] = {
     0, 0, 255, 255  // color
 };
 // clang-format on
+
+// Poweroff callbacks
+bool running = true;
 
 void poweroff(void) { running = false; }
 
@@ -92,6 +94,7 @@ int main(void) {
     // Game state
     float triangle_rotation = 0;
 
+    // Game loop
     while (running) {
         // Update
         triangle_rotation += 1;
@@ -147,7 +150,7 @@ int main(void) {
         if (screenmode->viTVMode & VI_NON_INTERLACE) VIDEO_WaitVSync();
     }
 
-    // Power off console
-    SYS_ResetSystem(SYS_POWEROFF, 0, 0);
+    // Disconnect wpads
+    WPAD_Disconnect(WPAD_CHAN_ALL);
     return 0;
 }
