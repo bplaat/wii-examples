@@ -15,6 +15,8 @@
 #define DEFAULT_FIFO_SIZE (256 * 1024)
 
 GXRModeObj *screenmode;
+
+// Poweroff callbacks
 bool running = true;
 
 void poweroff(void) { running = false; }
@@ -99,7 +101,12 @@ int main(void) {
 
         // Read buttons
         cursor_update();
-        if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME) running = false;
+        for (int32_t i = 0; i < 4; i++) {
+            Cursor *cursor = &cursors[i];
+            if (cursor->enabled) {
+                if (cursor->buttons_down & WPAD_BUTTON_HOME) running = false;
+            }
+        }
 
         // ### Draw cube ###
         {
@@ -235,7 +242,7 @@ int main(void) {
         if (screenmode->viTVMode & VI_NON_INTERLACE) VIDEO_WaitVSync();
     }
 
-    // Power off console
-    // SYS_ResetSystem(SYS_POWEROFF, 0, 0);
+    // Disconnect wpads
+    WPAD_Disconnect(WPAD_CHAN_ALL);
     return 0;
 }

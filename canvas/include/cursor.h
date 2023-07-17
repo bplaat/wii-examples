@@ -1,6 +1,7 @@
 #pragma once
 
 #include <gccore.h>
+#include <wiiuse/wpad.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -9,7 +10,9 @@ typedef struct Cursor {
     int32_t x;
     int32_t y;
     int32_t angle;
+    uint32_t buttons_down;
     uint32_t buttons_held;
+    uint32_t buttons_up;
     GXTexObj texture;
 } Cursor;
 
