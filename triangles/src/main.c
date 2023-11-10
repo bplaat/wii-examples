@@ -75,6 +75,7 @@ int main(void) {
                     ((screenmode->viHeight == 2 * screenmode->xfbHeight) ? GX_ENABLE : GX_DISABLE));
     GX_SetDispCopyGamma(GX_GM_1_0);
 
+    GX_ClearVtxDesc();
     GX_InvVtxCache();
     GX_InvalidateTexAll();
     VIDEO_SetBlack(false);

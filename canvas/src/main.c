@@ -66,6 +66,7 @@ int main(void) {
                     ((screenmode->viHeight == 2 * screenmode->xfbHeight) ? GX_ENABLE : GX_DISABLE));
     GX_SetDispCopyGamma(GX_GM_1_0);
 
+    GX_ClearVtxDesc();
     GX_InvVtxCache();
     GX_InvalidateTexAll();
     VIDEO_SetBlack(false);
@@ -213,16 +214,16 @@ int main(void) {
         canvas_draw_image(&dirt_grass_texture, 200, 250, 100, 100, 0x0000ffff);
         guMtxIdentity(canvas.transform_matrix);
 
-        canvas_fill_text("Hello Wii!", 8, 8, 32, 0xffffffff);
-        canvas_fill_text("The quick brown fox jumps over the lazy dog.", 8, 8 + 32 + 8, 16, 0xffffffff);
+        float y = 8;
+        canvas_fill_text(u8"Hello Wii 🏠!", 8, y, 64, 0xffffffff);
+        y += 64 + 8;
+        canvas_fill_text("The quick brown fox jumps over the lazy dog.", 8, y, 24, 0xff0000ff);
+        y += 24 + 8;
 
         char debug_string[255];
         sprintf(debug_string, "framebuffer=%dx%d viewport=%dx%d", screenmode->fbWidth, screenmode->xfbHeight,
                 screenmode->viWidth, screenmode->viHeight);
-        canvas_fill_text(debug_string, 8, 8 + 32 + 8 + 16 + 8, 16, 0xffffffff);
-
-        canvas_fill_text("Press home button to quit...", 8, screenmode->viHeight - 16 - 8 - 24 - 8, 16, 0x00ff00ff);
-        canvas_fill_text("Made by Bastiaan van der Plaat", 8, screenmode->viHeight - 24 - 8, 24, 0xff0000ff);
+        canvas_fill_text(debug_string, 8, y, 24, 0xffffffff);
 
         cursor_render();
         canvas_end();
