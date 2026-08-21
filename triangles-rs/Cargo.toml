@@ -1,0 +1,17 @@
+[package]
+name = "triangles-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ogc-rs = { git = "https://github.com/rust-wii/ogc-rs", features = ["ffi"] }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+strip = "symbols"
+opt-level = "s"
