@@ -19,6 +19,6 @@ void canvas_end(void);
 
 void canvas_fill_rect(float x, float y, float width, float height, uint32_t color);
 
-void canvas_draw_image(GXTexObj *texture, float x, float y, float width, float height, uint32_t color);
+void canvas_draw_image(GXTexObj* texture, float x, float y, float width, float height, uint32_t color);
 
-void canvas_fill_text(char *text, float x, float y, float text_size, uint32_t color);
+void canvas_fill_text(const char* text, float x, float y, float text_size, uint32_t color);

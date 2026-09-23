@@ -12,6 +12,7 @@ _Alignas(32) uint16_t blank_pixels[16] = {0xffff};
 
 void canvas_init(void) {
     // Create blank texture
+    DCFlushRange(blank_pixels, sizeof(blank_pixels));
     GX_InitTexObj(&canvas.blank_texture, blank_pixels, 1, 1, GX_TF_RGB565, GX_CLAMP, GX_CLAMP, GX_FALSE);
 
     // Load font texture
@@ -41,7 +42,10 @@ void canvas_begin(uint32_t screen_width, uint32_t screen_height) {
     GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_CLR_RGBA, GX_RGBA8, 0);
     GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_TEX0, GX_TEX_ST, GX_F32, 0);
     GX_SetNumChans(1);
+    GX_SetChanCtrl(GX_COLOR0A0, GX_DISABLE, GX_SRC_VTX, GX_SRC_VTX, 0, GX_DF_NONE, GX_AF_NONE);
+    GX_SetCurrentMtx(GX_PNMTX0);
     GX_SetNumTexGens(1);
+    GX_SetNumTevStages(1);
     GX_SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_TEX0, GX_IDENTITY);
     GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLOR0A0);
     GX_SetTevOp(GX_TEVSTAGE0, GX_MODULATE);
@@ -56,7 +60,7 @@ inline void canvas_fill_rect(float x, float y, float width, float height, uint32
     canvas_draw_image(&canvas.blank_texture, x, y, width, height, color);
 }
 
-void canvas_draw_image(GXTexObj *texture, float x, float y, float width, float height, uint32_t color) {
+void canvas_draw_image(GXTexObj* texture, float x, float y, float width, float height, uint32_t color) {
     // Load texture
     GX_LoadTexObj(texture, GX_TEXMAP0);
 
@@ -71,24 +75,24 @@ void canvas_draw_image(GXTexObj *texture, float x, float y, float width, float h
     guMtxConcat(matrix, canvas.transform_matrix, matrix);
     GX_LoadPosMtxImm(matrix, GX_PNMTX0);
 
-    // Draw quad
+    // PNG top rows map to t=1 for this canvas projection.
     GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
     GX_Position2f32(0.5, -0.5);
     GX_Color1u32(color);
-    GX_TexCoord2f32(1, 0);
+    GX_TexCoord2f32(1, 1);
     GX_Position2f32(0.5, 0.5);
     GX_Color1u32(color);
-    GX_TexCoord2f32(1, 1);
+    GX_TexCoord2f32(1, 0);
     GX_Position2f32(-0.5, 0.5);
     GX_Color1u32(color);
-    GX_TexCoord2f32(0, 1);
+    GX_TexCoord2f32(0, 0);
     GX_Position2f32(-0.5, -0.5);
     GX_Color1u32(color);
-    GX_TexCoord2f32(0, 0);
+    GX_TexCoord2f32(0, 1);
     GX_End();
 }
 
-static uint32_t get_next_code_point(const char *str, int *index) {
+static uint32_t get_next_code_point(const char* str, int* index) {
     uint32_t code_point = 0;
     unsigned char current_byte;
 
@@ -127,7 +131,7 @@ static uint32_t get_next_code_point(const char *str, int *index) {
     return code_point;
 }
 
-void canvas_fill_text(char *text, float x, float y, float text_size, uint32_t color) {
+void canvas_fill_text(const char* text, float x, float y, float text_size, uint32_t color) {
     // Load font texture
     GX_LoadTexObj(&canvas.font_texture, GX_TEXMAP0);
 
@@ -142,15 +146,18 @@ void canvas_fill_text(char *text, float x, float y, float text_size, uint32_t co
         }
 
         // Get right char
-        FontChar *font_char = &font[code_point - 33];
-        if (code_point > 127) {
-            for (int32_t i = 0; i < sizeof(font) / sizeof(FontChar); i++) {
+        FontChar* font_char = NULL;
+        if (code_point >= 33 && code_point <= 126) {
+            font_char = &font[code_point - 33];
+        } else {
+            for (size_t i = 0; i < sizeof(font) / sizeof(FontChar); i++) {
                 if (font[i].n == code_point) {
                     font_char = &font[i];
                     break;
                 }
             }
         }
+        if (!font_char || !font_char->w || !font_char->h) continue;
 
         // Set quad matrix
         float width = font_char->w * scale;
@@ -164,11 +171,11 @@ void canvas_fill_text(char *text, float x, float y, float text_size, uint32_t co
         // clang-format on
         GX_LoadPosMtxImm(matrix, GX_PNMTX0);
 
-        // Draw character
-        float left = font_char->x / 480.f;
-        float top = font_char->y / 480.f;
-        float right = (font_char->x + font_char->w) / 480.f;
-        float bottom = (font_char->y + font_char->h) / 480.f;
+        // Sample inside the glyph so bilinear filtering cannot read its neighbors.
+        float left = (font_char->x + 0.5f) / 480.f;
+        float top = 1.f - (font_char->y + 0.5f) / 480.f;
+        float right = (font_char->x + font_char->w - 0.5f) / 480.f;
+        float bottom = 1.f - (font_char->y + font_char->h - 0.5f) / 480.f;
         uint32_t c = font_char->c ? 0xffffffff : color;
 
         GX_Begin(GX_QUADS, GX_VTXFMT0, 4);

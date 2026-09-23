@@ -1,9 +1,9 @@
 #pragma once
 
 #include <gccore.h>
-#include <wiiuse/wpad.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <wiiuse/wpad.h>
 
 typedef struct Cursor {
     bool enabled;

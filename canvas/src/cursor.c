@@ -21,7 +21,7 @@ void cursor_init(void) {
     // Read cursors state
     WPAD_ScanPads();
     for (int32_t i = 0; i < 4; i++) {
-        Cursor *cursor = &cursors[i];
+        Cursor* cursor = &cursors[i];
         // uint32_t devtype;
         // WPAD_Probe(i, &devtype);
         // cursor->enabled = devtype == WPAD_EXP_NONE || devtype == WPAD_EXP_NUNCHUK || devtype == WPAD_EXP_CLASSIC;
@@ -33,7 +33,7 @@ void cursor_update(void) {
     // Read cursors state
     WPAD_ScanPads();
     for (int32_t i = 0; i < 4; i++) {
-        Cursor *cursor = &cursors[i];
+        Cursor* cursor = &cursors[i];
         if (cursor->enabled) {
             ir_t ir;
             WPAD_IR(i, &ir);
@@ -50,7 +50,7 @@ void cursor_update(void) {
 void cursor_render(void) {
     // Draw enabled cursors on screen
     for (int32_t i = 0; i < 4; i++) {
-        Cursor *cursor = &cursors[i];
+        Cursor* cursor = &cursors[i];
         if (cursor->enabled) {
             guMtxRotDeg(canvas.transform_matrix, 'z', cursor->angle);
             canvas_draw_image(&cursor->texture, cursor->x - 96 / 2, cursor->y - 96 / 2, 96, 96, 0xffffffff);

@@ -1,3 +1,5 @@
+// A larger example that shows 2D rendering, PNG image loading, font rendering, and cursor rendering.
+
 #include <gccore.h>
 #include <malloc.h>
 #include <stdbool.h>
@@ -12,73 +14,72 @@
 #include "canvas.h"
 #include "cursor.h"
 
-#define DEFAULT_FIFO_SIZE (256 * 1024)
+#define FIFO_SIZE (256 * 1024)
+#define CLEAR_COLOR ((GXColor){128, 128, 128, 255})
 
-GXRModeObj *screenmode;
+static volatile bool running = true;
 
-// Poweroff callbacks
-bool running = true;
+static void poweroff(void) {
+    running = false;
+}
 
-void poweroff(void) { running = false; }
-
-void wpad_poweroff(int32_t chan) {
-    if (chan == WPAD_CHAN_ALL) {
+static void wpad_poweroff(int32_t channel) {
+    if (channel == WPAD_CHAN_ALL)
         running = false;
-    }
 }
 
 int main(void) {
-    // Init video
     VIDEO_Init();
     VIDEO_SetBlack(true);
+    GXRModeObj* screenmode = VIDEO_GetPreferredMode(NULL);
 
-    // Get screen mode
-    screenmode = VIDEO_GetPreferredMode(NULL);
-    VIDEO_Configure(screenmode);
-    if (CONF_GetAspectRatio() == CONF_ASPECT_16_9) {
-        screenmode->viWidth = (float)screenmode->viHeight * (16.f / 9.f);
+    void* framebuffer0 = SYS_AllocateFramebuffer(screenmode);
+    void* framebuffer1 = SYS_AllocateFramebuffer(screenmode);
+    void* fifo = memalign(32, FIFO_SIZE);
+    if (!framebuffer0 || !framebuffer1 || !fifo) {
+        free(framebuffer0);
+        free(framebuffer1);
+        free(fifo);
+        return 1;
     }
+    void* framebuffers[2] = {MEM_K0_TO_K1(framebuffer0), MEM_K0_TO_K1(framebuffer1)};
+    uint32_t framebuffer = 0;
+    bool first_frame = true;
+    float aspect = CONF_GetAspectRatio() == CONF_ASPECT_16_9 ? 16.0f / 9.0f : 4.0f / 3.0f;
 
-    // Alloc two framebuffers to toggle between
-    void *frame_buffers[] = {MEM_K0_TO_K1(SYS_AllocateFramebuffer(screenmode)),
-                             MEM_K0_TO_K1(SYS_AllocateFramebuffer(screenmode))};
-    uint32_t fb_index = 0;
-    VIDEO_SetNextFramebuffer(frame_buffers[fb_index]);
-
-    // Wait for next frame
+    VIDEO_Configure(screenmode);
+    VIDEO_SetNextFramebuffer(framebuffers[framebuffer]);
     VIDEO_Flush();
     VIDEO_WaitVSync();
-    if (screenmode->viTVMode & VI_NON_INTERLACE) VIDEO_WaitVSync();
+    if (screenmode->viTVMode & VI_NON_INTERLACE)
+        VIDEO_WaitVSync();
 
-    // Init gx fifo buffer
-    uint8_t *gx_fifo = MEM_K0_TO_K1(memalign(32, DEFAULT_FIFO_SIZE));
-    memset(gx_fifo, 0, DEFAULT_FIFO_SIZE);
-    GX_Init(gx_fifo, DEFAULT_FIFO_SIZE);
-
-    // Init other gx stuff
+    memset(fifo, 0, FIFO_SIZE);
+    GX_Init(fifo, FIFO_SIZE);
     GX_SetViewport(0, 0, screenmode->fbWidth, screenmode->efbHeight, 0, 1);
+    GX_SetScissor(0, 0, screenmode->fbWidth, screenmode->efbHeight);
     float yscale = GX_GetYScaleFactor(screenmode->efbHeight, screenmode->xfbHeight);
-    uint32_t xfbHeight = GX_SetDispCopyYScale(yscale);
+    uint32_t xfb_height = GX_SetDispCopyYScale(yscale);
     GX_SetDispCopySrc(0, 0, screenmode->fbWidth, screenmode->efbHeight);
-    GX_SetDispCopyDst(screenmode->fbWidth, xfbHeight);
+    GX_SetDispCopyDst(screenmode->fbWidth, xfb_height);
     GX_SetCopyFilter(screenmode->aa, screenmode->sample_pattern, GX_TRUE, screenmode->vfilter);
     GX_SetFieldMode(screenmode->field_rendering,
-                    ((screenmode->viHeight == 2 * screenmode->xfbHeight) ? GX_ENABLE : GX_DISABLE));
+                    screenmode->viHeight == 2 * screenmode->xfbHeight ? GX_ENABLE : GX_DISABLE);
+    GX_SetPixelFmt(screenmode->aa ? GX_PF_RGB565_Z16 : GX_PF_RGB8_Z24, GX_ZC_LINEAR);
     GX_SetDispCopyGamma(GX_GM_1_0);
+    GX_SetCopyClear(CLEAR_COLOR, GX_MAX_Z24);
 
-    GX_ClearVtxDesc();
-    GX_InvVtxCache();
-    GX_InvalidateTexAll();
-    VIDEO_SetBlack(false);
-
-    // Init wpad buttons
     WPAD_Init();
-    WPAD_SetDataFormat(WPAD_CHAN_ALL, WPAD_FMT_BTNS_ACC_IR);
-    WPAD_SetVRes(0, screenmode->viWidth, screenmode->viHeight);
-
-    // Set power off handlers
     SYS_SetPowerCallback(poweroff);
     WPAD_SetPowerButtonCallback(wpad_poweroff);
+
+    GX_SetZMode(GX_ENABLE, GX_ALWAYS, GX_TRUE);
+    GX_CopyDisp(framebuffers[framebuffer], GX_TRUE);
+    uint32_t screen_height = screenmode->viHeight;
+    uint32_t screen_width = (uint32_t)(screen_height * aspect);
+
+    WPAD_SetDataFormat(WPAD_CHAN_ALL, WPAD_FMT_BTNS_ACC_IR);
+    WPAD_SetVRes(0, screen_width, screen_height);
 
     // Init stuff
     canvas_init();
@@ -86,14 +87,19 @@ int main(void) {
 
     // Load textures
     TPLFile blocks_tpl;
-    TPL_OpenTPLFromMemory(&blocks_tpl, (void *)blocks_texture_tpl, blocks_texture_tpl_size);
+    if (TPL_OpenTPLFromMemory(&blocks_tpl, (void*)blocks_texture_tpl, blocks_texture_tpl_size) != 1)
+        return 1;
     GXTexObj dirt_grass_texture;
-    TPL_GetTexture(&blocks_tpl, dirt_grass, &dirt_grass_texture);
+    if (TPL_GetTexture(&blocks_tpl, dirt_grass, &dirt_grass_texture) != 0)
+        return 1;
     GXTexObj stone_coal_texture;
-    TPL_GetTexture(&blocks_tpl, stone_coal, &stone_coal_texture);
+    if (TPL_GetTexture(&blocks_tpl, stone_coal, &stone_coal_texture) != 0)
+        return 1;
 
     // Game state
     float rotation = 0;
+    Mtx44 perspective_matrix;
+    guPerspective(perspective_matrix, 45.0f, aspect, 0.1f, 1000.0f);
 
     // Game loop
     while (running) {
@@ -103,17 +109,16 @@ int main(void) {
         // Read buttons
         cursor_update();
         for (int32_t i = 0; i < 4; i++) {
-            Cursor *cursor = &cursors[i];
+            Cursor* cursor = &cursors[i];
             if (cursor->enabled) {
-                if (cursor->buttons_down & WPAD_BUTTON_HOME) running = false;
+                if (cursor->buttons_down & WPAD_BUTTON_HOME)
+                    running = false;
             }
         }
 
         // ### Draw cube ###
         {
             // Set projection matrix
-            Mtx44 perspective_matrix;
-            guPerspective(perspective_matrix, 45, (float)screenmode->viWidth / (float)screenmode->viHeight, 0.1, 1000);
             GX_LoadProjectionMtx(perspective_matrix, GX_PERSPECTIVE);
 
             // Enable depth test and disable culling
@@ -205,7 +210,7 @@ int main(void) {
         }
 
         // ### Draw HUD ###
-        canvas_begin(screenmode->viWidth, screenmode->viHeight);
+        canvas_begin(screen_width, screen_height);
 
         guMtxRotDeg(canvas.transform_matrix, 'z', rotation);
         canvas_draw_image(&dirt_grass_texture, 50, 100, 100, 100, 0xffffffff);
@@ -215,32 +220,31 @@ int main(void) {
         guMtxIdentity(canvas.transform_matrix);
 
         float y = 8;
-        canvas_fill_text(u8"Hello Wii 🏠!", 8, y, 64, 0xffffffff);
+        canvas_fill_text("Hello Wii 🏠!", 8, y, 64, 0xffffffff);
         y += 64 + 8;
         canvas_fill_text("The quick brown fox jumps over the lazy dog.", 8, y, 24, 0xff0000ff);
         y += 24 + 8;
 
         char debug_string[255];
         sprintf(debug_string, "framebuffer=%dx%d viewport=%dx%d", screenmode->fbWidth, screenmode->xfbHeight,
-                screenmode->viWidth, screenmode->viHeight);
+                screen_width, screen_height);
         canvas_fill_text(debug_string, 8, y, 24, 0xffffffff);
 
         cursor_render();
         canvas_end();
 
-        // Set clear color for next frame
-        GX_SetCopyClear((GXColor){128, 128, 128, 255}, GX_MAX_Z24);
-
-        // Present framebuffer
         GX_DrawDone();
-        fb_index ^= 1;
-        GX_CopyDisp(frame_buffers[fb_index], GX_TRUE);
-        VIDEO_SetNextFramebuffer(frame_buffers[fb_index]);
-
-        // Wait for next frame
+        framebuffer ^= 1;
+        // GX_CopyDisp clears depth only when Z writes are enabled.
+        GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_TRUE);
+        GX_CopyDisp(framebuffers[framebuffer], GX_TRUE);
+        VIDEO_SetNextFramebuffer(framebuffers[framebuffer]);
+        if (first_frame) {
+            VIDEO_SetBlack(false);
+            first_frame = false;
+        }
         VIDEO_Flush();
         VIDEO_WaitVSync();
-        if (screenmode->viTVMode & VI_NON_INTERLACE) VIDEO_WaitVSync();
     }
 
     // Disconnect wpads
