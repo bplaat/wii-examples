@@ -1,4 +1,5 @@
-// A simple Wii homebrew test program that draws some triangles with display lists
+// A simple Hello World test program that draws some triangles with display lists.
+
 #include <gccore.h>
 #include <malloc.h>
 #include <stdbool.h>
@@ -7,151 +8,133 @@
 #include <string.h>
 #include <wiiuse/wpad.h>
 
-#define DEFAULT_FIFO_SIZE (256 * 1024)
+#define FIFO_SIZE (256 * 1024)
+#define CLEAR_COLOR ((GXColor){128, 128, 128, 255})
 
-GXRModeObj *screenmode;
+static volatile bool running = true;
 
-// Triangle display list
+static void poweroff(void) {
+    running = false;
+}
+
+static void wpad_poweroff(int32_t channel) {
+    if (channel == WPAD_CHAN_ALL)
+        running = false;
+}
+
 // clang-format off
-_Alignas(32) uint8_t triangle_list[32] = {
+_Alignas(32) static uint8_t triangle_list[32] = {
     GX_TRIANGLES | GX_VTXFMT0,
-    0, 3,           // number of vertexes (16-bit big endian)
-    0, 1,           // position
-    255, 0, 0, 255, // color
-    -1, -1,         // position
-    0, 255, 0, 255, // color
-    1, -1,          // position
-    0, 0, 255, 255  // color
+    0, 3,
+    0, 1,           255, 0, 0, 255,
+    -1, -1,         0, 255, 0, 255,
+    1, -1,          0, 0, 255, 255
 };
 // clang-format on
 
-// Poweroff callbacks
-bool running = true;
-
-void poweroff(void) { running = false; }
-
-void wpad_poweroff(int32_t chan) {
-    if (chan == WPAD_CHAN_ALL) {
-        running = false;
-    }
-}
-
 int main(void) {
-    // Init video
     VIDEO_Init();
     VIDEO_SetBlack(true);
+    GXRModeObj* screenmode = VIDEO_GetPreferredMode(NULL);
 
-    // Get screen mode
-    screenmode = VIDEO_GetPreferredMode(NULL);
-    VIDEO_Configure(screenmode);
-    if (CONF_GetAspectRatio() == CONF_ASPECT_16_9) {
-        screenmode->viWidth = (float)screenmode->viHeight * (16.f / 9.f);
+    void* framebuffer0 = SYS_AllocateFramebuffer(screenmode);
+    void* framebuffer1 = SYS_AllocateFramebuffer(screenmode);
+    void* fifo = memalign(32, FIFO_SIZE);
+    if (!framebuffer0 || !framebuffer1 || !fifo) {
+        free(framebuffer0);
+        free(framebuffer1);
+        free(fifo);
+        return 1;
     }
+    void* framebuffers[2] = {MEM_K0_TO_K1(framebuffer0), MEM_K0_TO_K1(framebuffer1)};
+    uint32_t framebuffer = 0;
+    bool first_frame = true;
+    float aspect = CONF_GetAspectRatio() == CONF_ASPECT_16_9 ? 16.0f / 9.0f : 4.0f / 3.0f;
 
-    // Alloc two framebuffers to toggle between
-    void *frame_buffers[] = {MEM_K0_TO_K1(SYS_AllocateFramebuffer(screenmode)),
-                             MEM_K0_TO_K1(SYS_AllocateFramebuffer(screenmode))};
-    uint32_t fb_index = 0;
-    VIDEO_SetNextFramebuffer(frame_buffers[fb_index]);
-
-    // Wait for next frame
+    VIDEO_Configure(screenmode);
+    VIDEO_SetNextFramebuffer(framebuffers[framebuffer]);
     VIDEO_Flush();
     VIDEO_WaitVSync();
-    if (screenmode->viTVMode & VI_NON_INTERLACE) VIDEO_WaitVSync();
+    if (screenmode->viTVMode & VI_NON_INTERLACE)
+        VIDEO_WaitVSync();
 
-    // Init gx fifo buffer
-    uint8_t *gx_fifo = MEM_K0_TO_K1(memalign(32, DEFAULT_FIFO_SIZE));
-    memset(gx_fifo, 0, DEFAULT_FIFO_SIZE);
-    GX_Init(gx_fifo, DEFAULT_FIFO_SIZE);
-
-    // Init other gx stuff
+    memset(fifo, 0, FIFO_SIZE);
+    GX_Init(fifo, FIFO_SIZE);
     GX_SetViewport(0, 0, screenmode->fbWidth, screenmode->efbHeight, 0, 1);
+    GX_SetScissor(0, 0, screenmode->fbWidth, screenmode->efbHeight);
     float yscale = GX_GetYScaleFactor(screenmode->efbHeight, screenmode->xfbHeight);
-    uint32_t xfbHeight = GX_SetDispCopyYScale(yscale);
+    uint32_t xfb_height = GX_SetDispCopyYScale(yscale);
     GX_SetDispCopySrc(0, 0, screenmode->fbWidth, screenmode->efbHeight);
-    GX_SetDispCopyDst(screenmode->fbWidth, xfbHeight);
+    GX_SetDispCopyDst(screenmode->fbWidth, xfb_height);
     GX_SetCopyFilter(screenmode->aa, screenmode->sample_pattern, GX_TRUE, screenmode->vfilter);
     GX_SetFieldMode(screenmode->field_rendering,
-                    ((screenmode->viHeight == 2 * screenmode->xfbHeight) ? GX_ENABLE : GX_DISABLE));
+                    screenmode->viHeight == 2 * screenmode->xfbHeight ? GX_ENABLE : GX_DISABLE);
+    GX_SetPixelFmt(screenmode->aa ? GX_PF_RGB565_Z16 : GX_PF_RGB8_Z24, GX_ZC_LINEAR);
     GX_SetDispCopyGamma(GX_GM_1_0);
+    GX_SetCopyClear(CLEAR_COLOR, GX_MAX_Z24);
 
-    GX_ClearVtxDesc();
-    GX_InvVtxCache();
-    GX_InvalidateTexAll();
-    VIDEO_SetBlack(false);
-
-    // Init wpad buttons
     WPAD_Init();
-
-    // Set power off handlers
     SYS_SetPowerCallback(poweroff);
     WPAD_SetPowerButtonCallback(wpad_poweroff);
 
-    // Set projection matrix
-    Mtx44 perspective_matrix;
-    guPerspective(perspective_matrix, 45, (float)screenmode->viWidth / (float)screenmode->viHeight, 0.1, 1000);
-    GX_LoadProjectionMtx(perspective_matrix, GX_PERSPECTIVE);
+    GX_SetZMode(GX_ENABLE, GX_ALWAYS, GX_TRUE);
+    GX_CopyDisp(framebuffers[framebuffer], GX_TRUE);
 
-    // Game state
-    float triangle_rotation = 0;
+    GX_ClearVtxDesc();
+    GX_SetVtxDesc(GX_VA_POS, GX_DIRECT);
+    GX_SetVtxDesc(GX_VA_CLR0, GX_DIRECT);
+    GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XY, GX_S8, 0);
+    GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_CLR_RGBA, GX_RGBA8, 0);
+    GX_SetNumChans(1);
+    GX_SetChanCtrl(GX_COLOR0A0, GX_DISABLE, GX_SRC_VTX, GX_SRC_VTX, 0, GX_DF_NONE, GX_AF_NONE);
+    GX_SetNumTexGens(0);
+    GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORDNULL, GX_TEXMAP_NULL, GX_COLOR0A0);
+    GX_SetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
+    GX_SetCullMode(GX_CULL_NONE);
+    DCFlushRange(triangle_list, sizeof(triangle_list));
 
-    // Game loop
+    Mtx44 projection;
+    guPerspective(projection, 45.0f, aspect, 0.1f, 1000.0f);
+    GX_LoadProjectionMtx(projection, GX_PERSPECTIVE);
+
+    float rotation = 0.0f;
     while (running) {
-        // Update
-        triangle_rotation += 1;
-
-        // Read buttons
         WPAD_ScanPads();
-        if (WPAD_ButtonsDown(0) & WPAD_BUTTON_HOME) running = false;
-
-        // Enable depth test and disable culling
+        for (int channel = 0; channel < WPAD_MAX_WIIMOTES; channel++) {
+            if (WPAD_ButtonsDown(channel) & WPAD_BUTTON_HOME)
+                running = false;
+        }
+        if (!running)
+            break;
+        rotation += 1.0f;
         GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_TRUE);
-        GX_SetCullMode(GX_CULL_NONE);
 
-        // Setup triangle draw
-        GX_ClearVtxDesc();
-        GX_SetVtxDesc(GX_VA_POS, GX_DIRECT);
-        GX_SetVtxDesc(GX_VA_CLR0, GX_DIRECT);
-        GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XY, GX_S8, 0);
-        GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_CLR0, GX_CLR_RGBA, GX_RGBA8, 0);
-        GX_SetNumChans(1);
-        GX_SetNumTexGens(0);
-        GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORDNULL, GX_TEXMAP_NULL, GX_COLOR0A0);
-        GX_SetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
-
-        // Draw triangles
         for (int32_t y = -2; y < 2; y++) {
             for (int32_t x = -2; x < 2; x++) {
-                // Set triangle matrix
-                Mtx triangle_matrix;
-                guMtxRotDeg(triangle_matrix, 'x', triangle_rotation);
-                Mtx temp_matrix;
-                guMtxRotDeg(temp_matrix, 'y', triangle_rotation);
-                guMtxConcat(triangle_matrix, temp_matrix, triangle_matrix);
-                guMtxTransApply(triangle_matrix, triangle_matrix, x * 2 + 1, y * 2 + 1, -10);
-                GX_LoadPosMtxImm(triangle_matrix, GX_PNMTX0);
-
-                // Draw triangle display list
+                Mtx matrix;
+                Mtx temp;
+                guMtxRotDeg(matrix, 'x', rotation);
+                guMtxRotDeg(temp, 'y', rotation);
+                guMtxConcat(matrix, temp, matrix);
+                guMtxTransApply(matrix, matrix, x * 2 + 1, y * 2 + 1, -10);
+                GX_LoadPosMtxImm(matrix, GX_PNMTX0);
                 GX_CallDispList(triangle_list, sizeof(triangle_list));
             }
         }
-
-        // Set clear color for next frame
-        GX_SetCopyClear((GXColor){128, 128, 128, 255}, GX_MAX_Z24);
-
-        // Present framebuffer
         GX_DrawDone();
-        fb_index ^= 1;
-        GX_CopyDisp(frame_buffers[fb_index], GX_TRUE);
-        VIDEO_SetNextFramebuffer(frame_buffers[fb_index]);
-
-        // Wait for next frame
+        framebuffer ^= 1;
+        // GX_CopyDisp clears depth only when Z writes are enabled.
+        GX_SetZMode(GX_ENABLE, GX_LEQUAL, GX_TRUE);
+        GX_CopyDisp(framebuffers[framebuffer], GX_TRUE);
+        VIDEO_SetNextFramebuffer(framebuffers[framebuffer]);
+        if (first_frame) {
+            VIDEO_SetBlack(false);
+            first_frame = false;
+        }
         VIDEO_Flush();
         VIDEO_WaitVSync();
-        if (screenmode->viTVMode & VI_NON_INTERLACE) VIDEO_WaitVSync();
     }
 
-    // Disconnect wpads
     WPAD_Disconnect(WPAD_CHAN_ALL);
     return 0;
 }
