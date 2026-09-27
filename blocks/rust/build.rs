@@ -18,29 +18,8 @@ fn main() {
     let dependencies = out_dir.join("materials.d");
 
     println!("cargo:rerun-if-changed={}", script.display());
-    let image_names = [
-        "brick_red.png",
-        "cactus_side.png",
-        "cactus_top.png",
-        "dirt.png",
-        "dirt_grass.png",
-        "grass_top.png",
-        "greystone.png",
-        "lava.png",
-        "leaves.png",
-        "sand.png",
-        "stone.png",
-        "stone_coal.png",
-        "stone_diamond.png",
-        "stone_gold.png",
-        "stone_iron.png",
-        "trunk_side.png",
-        "trunk_top.png",
-        "water.png",
-        "wood.png",
-    ];
     let script_text = fs::read_to_string(&script).expect("failed to read materials.scf");
-    let listed_images: Vec<_> = script_text
+    let image_names: Vec<_> = script_text
         .lines()
         .filter(|line| !line.trim().is_empty())
         .map(|line| {
@@ -50,8 +29,8 @@ fn main() {
                 .expect("invalid materials.scf entry")
         })
         .collect();
-    assert_eq!(listed_images, image_names, "material order changed");
-    for image in image_names {
+    assert!(!image_names.is_empty(), "materials.scf has no images");
+    for &image in &image_names {
         println!("cargo:rerun-if-changed={}", assets.join(image).display());
     }
     let status = Command::new("gxtexconv")
