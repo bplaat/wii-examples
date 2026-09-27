@@ -115,14 +115,6 @@ pub struct GXTexObj {
     pub val: [u32; 8],
 }
 
-#[repr(C)]
-pub struct TPLFile {
-    pub kind: c_int,
-    pub texture_count: c_int,
-    pub texture_descriptors: *mut c_void,
-    pub file: *mut c_void,
-}
-
 pub type Mtx = [[f32; 4]; 3];
 pub type Mtx44 = [[f32; 4]; 4];
 
@@ -260,9 +252,6 @@ unsafe extern "C" {
         mipmap: u8,
     );
     pub fn GX_LoadTexObj(obj: *const GXTexObj, map: u8);
-    pub fn TPL_OpenTPLFromMemory(tpl: *mut TPLFile, memory: *mut c_void, len: u32) -> c_int;
-    pub fn TPL_GetTexture(tpl: *mut TPLFile, id: c_int, texture: *mut GXTexObj) -> c_int;
-    pub fn TPL_CloseTPLFile(tpl: *mut TPLFile);
     pub fn GX_Begin(primitive: u8, format: u8, vertices: u16);
 
     // GX matrix loading and cache management

@@ -1,6 +1,6 @@
 # Bastiaan's Wii Examples
 
-Some Wii homebrew example programs
+Some Wii homebrew C and Rust example programs
 
 ## Getting Started
 
@@ -13,15 +13,13 @@ dkp-pacman -Syu
 dkp-pacman -S devkitPPC libogc2
 ```
 
-Build an example by running `make` from its directory.
-
 ## Triangles
 
 A simple Hello World test program that draws some triangles with display lists.
 
 ## Canvas
 
-A larger example that shows 2D rendering, PNG image loading, font rendering, and cursor rendering.
+A larger example that shows 2D rendering, runtime PNG decoding, font rendering, and cursor rendering.
 
 ## Blocks
 

@@ -9,15 +9,17 @@
 #include <string.h>
 #include <wiiuse/wpad.h>
 
-#include "blocks_texture.h"
 #include "canvas.h"
 #include "cursor.h"
 
 #define FIFO_SIZE (256 * 1024)
 #define CLEAR_COLOR ((GXColor){128, 128, 128, 255})
 
-_Alignas(32) static const uint8_t blocks_texture_tpl[] = {
-    #embed "../target/blocks_texture.tpl"
+static const uint8_t dirt_grass_png[] = {
+#embed "assets/dirt_grass.png"
+};
+static const uint8_t stone_coal_png[] = {
+#embed "assets/stone_coal.png"
 };
 
 static volatile bool running = true;
@@ -85,19 +87,16 @@ int main(void) {
     WPAD_SetVRes(0, screen_width, screen_height);
 
     // Init stuff
-    canvas_init();
-    cursor_init();
-
-    // Load textures
-    TPLFile blocks_tpl;
-    if (TPL_OpenTPLFromMemory(&blocks_tpl, (void*)blocks_texture_tpl, sizeof(blocks_texture_tpl)) != 1)
+    if (!canvas_init() || !cursor_init())
         return 1;
+
     GXTexObj dirt_grass_texture;
-    if (TPL_GetTexture(&blocks_tpl, dirt_grass, &dirt_grass_texture) != 0)
+    if (!texture_load_png_rgba8(&dirt_grass_texture, dirt_grass_png, sizeof(dirt_grass_png)))
         return 1;
     GXTexObj stone_coal_texture;
-    if (TPL_GetTexture(&blocks_tpl, stone_coal, &stone_coal_texture) != 0)
+    if (!texture_load_png_rgba8(&stone_coal_texture, stone_coal_png, sizeof(stone_coal_png)))
         return 1;
+    GX_InvalidateTexAll();
 
     // Game state
     float rotation = 0;
@@ -208,8 +207,6 @@ int main(void) {
             GX_Position3f32(1.0f, 1.0f, 1.0f);
             GX_TexCoord2f32(0.0f, 1.0f);
             GX_End();
-
-            GX_Flush();
         }
 
         // ### Draw HUD ###

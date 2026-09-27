@@ -1,13 +1,13 @@
 #![no_std]
 #![no_main]
 
+use crate::libogc::*;
 use core::ffi::{c_int, c_void};
 use core::panic::PanicInfo;
 use core::ptr;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 mod libogc;
-use libogc::*;
 
 const FIFO_SIZE: usize = 256 * 1024;
 const WPAD_CHANNEL_COUNT: c_int = 4;

@@ -2,8 +2,8 @@
 #![no_main]
 #![allow(unsafe_op_in_unsafe_fn)]
 
-extern crate alloc;
-
+use crate::libogc::*;
+use crate::texture::Texture;
 use alloc::format;
 use alloc::vec;
 use core::ffi::{c_int, c_void};
@@ -16,22 +16,9 @@ mod libogc;
 mod png;
 mod texture;
 
-use libogc::*;
-use texture::{Texture, TplTextures};
-
 const FIFO_SIZE: usize = 256 * 1024;
 const CLEAR_COLOR: GXColor = GXColor::new(128, 128, 128, 255);
 static RUNNING: AtomicBool = AtomicBool::new(true);
-
-#[repr(align(32))]
-struct AlignedTpl<const N: usize>([u8; N]);
-
-static BLOCK_TEXTURE_TPL: AlignedTpl<
-    { include_bytes!(concat!(env!("OUT_DIR"), "/blocks_texture.tpl")).len() },
-> = AlignedTpl(*include_bytes!(concat!(
-    env!("OUT_DIR"),
-    "/blocks_texture.tpl"
-)));
 
 struct FrameState {
     buffers: [HeapBuffer; 2],
@@ -72,7 +59,8 @@ impl FrameState {
 
 struct Assets {
     font: Texture,
-    blocks: TplTextures,
+    dirt_grass: Texture,
+    stone_coal: Texture,
     cursors: [Texture; 4],
 }
 
@@ -80,7 +68,8 @@ impl Assets {
     fn load() -> Option<Self> {
         Some(Self {
             font: Texture::from_png(include_bytes!("assets/font.png")).ok()?,
-            blocks: TplTextures::from_bytes(&BLOCK_TEXTURE_TPL.0).ok()?,
+            dirt_grass: Texture::from_png(include_bytes!("assets/dirt_grass.png")).ok()?,
+            stone_coal: Texture::from_png(include_bytes!("assets/stone_coal.png")).ok()?,
             cursors: [
                 Texture::from_png(include_bytes!("assets/cursor1.png")).ok()?,
                 Texture::from_png(include_bytes!("assets/cursor2.png")).ok()?,
@@ -139,11 +128,7 @@ impl CanvasScene {
     unsafe fn draw(&mut self, cursor: &IrData) {
         unsafe {
             self.rotation += 1.0;
-            draw_cube(
-                &self.assets.blocks.stone_coal,
-                self.rotation,
-                &self.perspective,
-            );
+            draw_cube(&self.assets.stone_coal, self.rotation, &self.perspective);
             GX_LoadProjectionMtx(&self.orthographic, GX_ORTHOGRAPHIC);
             GX_SetZMode(GX_DISABLE, GX_LEQUAL, GX_TRUE);
             GX_SetCullMode(GX_CULL_NONE);
@@ -182,7 +167,7 @@ impl CanvasScene {
                 (200.0, 250.0, 0x0000_ffff),
             ] {
                 draw_image(
-                    &self.assets.blocks.dirt_grass,
+                    &self.assets.dirt_grass,
                     &transform,
                     x,
                     y,

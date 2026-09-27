@@ -1,76 +1,15 @@
+use crate::libogc::{DCFlushRange, GX_CLAMP, GX_FALSE, GX_InitTexObj, GX_TF_RGBA8, GXTexObj};
+use crate::png;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ffi::c_void;
-
-use crate::libogc::{
-    DCFlushRange, GX_CLAMP, GX_FALSE, GX_InitTexObj, GX_TF_RGBA8, GXTexObj, TPL_CloseTPLFile,
-    TPL_GetTexture, TPL_OpenTPLFromMemory, TPLFile,
-};
-use crate::png;
 
 pub struct Texture {
     pub object: GXTexObj,
     _pixels: Vec<u8>,
 }
 
-pub struct TplTextures {
-    pub dirt_grass: Texture,
-    pub stone_coal: Texture,
-    _tpl: TPLFile,
-}
-
-impl TplTextures {
-    pub fn from_bytes(bytes: &'static [u8]) -> Result<Self, ()> {
-        let mut tpl = TPLFile {
-            kind: 0,
-            texture_count: 0,
-            texture_descriptors: core::ptr::null_mut(),
-            file: core::ptr::null_mut(),
-        };
-        let opened = unsafe {
-            TPL_OpenTPLFromMemory(
-                &mut tpl,
-                bytes.as_ptr().cast_mut().cast(),
-                bytes.len() as u32,
-            )
-        };
-        if opened != 1 {
-            return Err(());
-        }
-
-        let mut dirt_grass = GXTexObj { val: [0; 8] };
-        let mut stone_coal = GXTexObj { val: [0; 8] };
-        let loaded = unsafe {
-            TPL_GetTexture(&mut tpl, 0, &mut dirt_grass) == 0
-                && TPL_GetTexture(&mut tpl, 1, &mut stone_coal) == 0
-        };
-        if !loaded {
-            unsafe { TPL_CloseTPLFile(&mut tpl) };
-            return Err(());
-        }
-
-        Ok(Self {
-            dirt_grass: Texture::from_tpl_object(dirt_grass),
-            stone_coal: Texture::from_tpl_object(stone_coal),
-            _tpl: tpl,
-        })
-    }
-}
-
-impl Drop for TplTextures {
-    fn drop(&mut self) {
-        unsafe { TPL_CloseTPLFile(&mut self._tpl) }
-    }
-}
-
 impl Texture {
-    fn from_tpl_object(object: GXTexObj) -> Self {
-        Self {
-            object,
-            _pixels: Vec::new(),
-        }
-    }
-
     pub fn from_png(bytes: &[u8]) -> Result<Self, ()> {
         let image = png::decode(bytes).map_err(|_| ())?;
         let width = image.width;
