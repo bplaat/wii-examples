@@ -8,28 +8,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-typedef enum MaterialLayer {
-    MaterialLayerBrickRed,
-    MaterialLayerCactusSide,
-    MaterialLayerCactusTop,
-    MaterialLayerDirt,
-    MaterialLayerDirtGrass,
-    MaterialLayerGrassTop,
-    MaterialLayerGreystone,
-    MaterialLayerLava,
-    MaterialLayerLeaves,
-    MaterialLayerSand,
-    MaterialLayerStone,
-    MaterialLayerStoneCoal,
-    MaterialLayerStoneDiamond,
-    MaterialLayerStoneGold,
-    MaterialLayerStoneIron,
-    MaterialLayerTrunkSide,
-    MaterialLayerTrunkTop,
-    MaterialLayerWater,
-    MaterialLayerWood,
-    MaterialLayerCount,
-} MaterialLayer;
+#include "materials.h"
 
 typedef struct {
     int16_t x, y, z;
