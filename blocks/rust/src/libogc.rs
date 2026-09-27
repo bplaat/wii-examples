@@ -2,6 +2,7 @@
 
 use core::ffi::{c_int, c_void};
 
+// System and video values
 pub const SYS_BASE_CACHED: u32 = 0x8000_0000;
 pub const SYS_BASE_UNCACHED: u32 = 0xc000_0000;
 pub const VI_NON_INTERLACE: u32 = 1;
@@ -9,6 +10,7 @@ pub const CONF_ASPECT_16_9: i32 = 1;
 pub const WPAD_CHAN_ALL: i32 = -1;
 pub const WPAD_BUTTON_HOME: u32 = 0x8000;
 
+// GX values
 pub const GX_TRUE: u8 = 1;
 pub const GX_FALSE: u8 = 0;
 pub const GX_ENABLE: u8 = 1;
@@ -107,10 +109,12 @@ pub struct GXFifoObj {
 }
 
 unsafe extern "C" {
+    // Write-gather pipe and libogc heap
     pub static wgPipe: *mut c_void;
     pub fn memalign(alignment: usize, size: usize) -> *mut c_void;
     pub fn free(pointer: *mut c_void);
 
+    // Video mode and framebuffer setup
     pub fn VIDEO_Init();
     pub fn VIDEO_SetBlack(black: bool);
     pub fn VIDEO_GetPreferredMode(mode: *mut GXRModeObj) -> *mut GXRModeObj;
@@ -121,6 +125,7 @@ unsafe extern "C" {
     pub fn VIDEO_Flush();
     pub fn VIDEO_WaitVSync();
 
+    // GX initialization and display output
     pub fn GX_Init(fifo: *mut c_void, size: u32) -> *mut GXFifoObj;
     pub fn GX_SetViewport(x: f32, y: f32, width: f32, height: f32, near: f32, far: f32);
     pub fn GX_SetScissor(x: u32, y: u32, width: u32, height: u32);
@@ -133,6 +138,8 @@ unsafe extern "C" {
     pub fn GX_SetPixelFmt(pixel_format: u8, depth_compression: u8);
     pub fn GX_SetDispCopyGamma(gamma: u8);
     pub fn GX_SetCopyClear(color: GXColor, depth: u32);
+
+    // GX vertex, texture, and blend state
     pub fn GX_SetZMode(enable: u8, function: u8, update_enable: u8);
     pub fn GX_CopyDisp(destination: *mut c_void, clear: u8);
     pub fn GX_SetBlendMode(kind: u8, src: u8, dst: u8, op: u8);
@@ -160,8 +167,12 @@ unsafe extern "C" {
     pub fn GX_SetTevOrder(stage: u8, coord: u8, map: u32, color: u8);
     pub fn GX_SetTevOp(stage: u8, mode: u8);
     pub fn GX_SetCullMode(mode: u8);
+
+    // GX matrix loading
     pub fn GX_LoadProjectionMtx(matrix: *const Mtx44, projection_type: u8);
     pub fn GX_LoadPosMtxImm(matrix: *const Mtx, index: u32);
+
+    // GX commands and texture objects
     pub fn GX_LoadTexObj(obj: *const GXTexObj, map: u8);
     pub fn GX_InitTexObj(
         obj: *mut GXTexObj,
@@ -178,9 +189,12 @@ unsafe extern "C" {
     pub fn GX_EndDispList() -> u32;
     pub fn GX_CallDispList(list: *const c_void, size: u32);
     pub fn GX_DrawDone();
+
+    // Cache management
     pub fn DCInvalidateRange(pointer: *mut c_void, size: u32);
     pub fn DCFlushRange(pointer: *mut c_void, size: u32);
 
+    // GU matrix operations
     pub fn guPerspective(matrix: *mut Mtx44, fovy: f32, aspect: f32, near: f32, far: f32);
     pub fn guLookAt(
         matrix: *mut Mtx,
@@ -188,8 +202,11 @@ unsafe extern "C" {
         up: *const GuVector,
         target: *const GuVector,
     );
+
+    // System timing
     pub fn gettime() -> u64;
 
+    // Wii Remote input and power callbacks
     pub fn WPAD_Init() -> c_int;
     pub fn WPAD_ScanPads() -> c_int;
     pub fn WPAD_ButtonsDown(channel: c_int) -> u32;
