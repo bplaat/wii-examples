@@ -1,5 +1,4 @@
 use core::ffi::{c_char, c_int, c_void};
-use core::ptr::NonNull;
 
 // System and video values
 pub const SYS_BASE_CACHED: u32 = 0x8000_0000;
@@ -73,32 +72,8 @@ pub struct GXFifoObj {
     _private: [u8; 0],
 }
 
-impl GXColor {
-    pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
-        Self { r, g, b, a }
-    }
-}
-
 pub type PowerCallback = Option<extern "C" fn()>;
 pub type WpadPowerCallback = Option<extern "C" fn(c_int)>;
-
-pub struct HeapBuffer(NonNull<c_void>);
-
-impl HeapBuffer {
-    pub unsafe fn from_raw(pointer: *mut c_void) -> Option<Self> {
-        NonNull::new(pointer).map(Self)
-    }
-
-    pub fn as_ptr(&self) -> *mut c_void {
-        self.0.as_ptr()
-    }
-}
-
-impl Drop for HeapBuffer {
-    fn drop(&mut self) {
-        unsafe { free(self.0.as_ptr()) }
-    }
-}
 
 unsafe extern "C" {
     // libogc heap

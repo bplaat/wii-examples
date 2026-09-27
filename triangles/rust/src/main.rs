@@ -5,23 +5,77 @@ use crate::libogc::*;
 use core::ffi::{c_int, c_void};
 use core::panic::PanicInfo;
 use core::ptr;
+use core::ptr::NonNull;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 mod libogc;
 
 const FIFO_SIZE: usize = 256 * 1024;
 const WPAD_CHANNEL_COUNT: c_int = 4;
-const CLEAR_COLOR: GXColor = GXColor::new(128, 128, 128, 255);
+const CLEAR_COLOR: GXColor = GXColor {
+    r: 128,
+    g: 128,
+    b: 128,
+    a: 255,
+};
 static RUNNING: AtomicBool = AtomicBool::new(true);
 
+struct HeapBuffer(NonNull<c_void>);
+
+impl HeapBuffer {
+    fn from_raw(pointer: *mut c_void) -> Option<Self> {
+        NonNull::new(pointer).map(Self)
+    }
+
+    fn as_ptr(&self) -> *mut c_void {
+        self.0.as_ptr()
+    }
+}
+
+impl Drop for HeapBuffer {
+    fn drop(&mut self) {
+        unsafe { free(self.0.as_ptr()) }
+    }
+}
+
+struct Framebuffer(HeapBuffer);
+
+impl Framebuffer {
+    fn new(mode: &GXRModeObj) -> Option<Self> {
+        HeapBuffer::from_raw(unsafe { SYS_AllocateFramebuffer(mode) }).map(Self)
+    }
+
+    fn scanout(&self) -> *mut c_void {
+        (self.0.as_ptr() as u32).wrapping_add(SYS_BASE_UNCACHED.wrapping_sub(SYS_BASE_CACHED))
+            as *mut c_void
+    }
+}
+
+struct AlignedBuffer(HeapBuffer);
+
+impl AlignedBuffer {
+    fn new_zeroed(size: usize) -> Option<Self> {
+        if size == 0 || !size.is_multiple_of(32) || size > u32::MAX as usize {
+            return None;
+        }
+        let buffer = HeapBuffer::from_raw(unsafe { memalign(32, size) })?;
+        unsafe { ptr::write_bytes(buffer.as_ptr(), 0, size) };
+        Some(Self(buffer))
+    }
+
+    fn as_ptr(&self) -> *mut c_void {
+        self.0.as_ptr()
+    }
+}
+
 struct FrameState {
-    buffers: [HeapBuffer; 2],
+    buffers: [Framebuffer; 2],
     current: usize,
     first_frame: bool,
 }
 
 impl FrameState {
-    fn new(buffers: [HeapBuffer; 2]) -> Self {
+    fn new(buffers: [Framebuffer; 2]) -> Self {
         Self {
             buffers,
             current: 0,
@@ -30,8 +84,7 @@ impl FrameState {
     }
 
     fn scanout(&self) -> *mut c_void {
-        (self.buffers[self.current].as_ptr() as u32)
-            .wrapping_add(SYS_BASE_UNCACHED.wrapping_sub(SYS_BASE_CACHED)) as *mut c_void
+        self.buffers[self.current].scanout()
     }
 
     unsafe fn present(&mut self) {
@@ -53,14 +106,18 @@ impl FrameState {
 
 struct TriangleScene {
     rotation: f32,
+    list: PreparedDisplayList,
 }
 
 impl TriangleScene {
-    unsafe fn new(aspect: f32) -> Self {
+    unsafe fn new(aspect: f32, list: PreparedDisplayList) -> Self {
         let mut projection = [[0.0; 4]; 4];
         unsafe { guPerspective(&mut projection, 45.0, aspect, 0.1, 1000.0) };
         unsafe { GX_LoadProjectionMtx(&projection, GX_PERSPECTIVE) };
-        Self { rotation: 0.0 }
+        Self {
+            rotation: 0.0,
+            list,
+        }
     }
 
     unsafe fn draw(&mut self) {
@@ -83,7 +140,7 @@ impl TriangleScene {
                         -10.0,
                     );
                     GX_LoadPosMtxImm(&matrix, GX_PNMTX0);
-                    GX_CallDispList(ptr::addr_of!(TRIANGLE_LIST).cast(), 32);
+                    self.list.draw();
                 }
             }
         }
@@ -92,6 +149,21 @@ impl TriangleScene {
 
 #[repr(C, align(32))]
 struct DisplayList([u8; 32]);
+
+struct PreparedDisplayList(&'static DisplayList);
+
+impl DisplayList {
+    fn prepare(&'static self) -> PreparedDisplayList {
+        unsafe { DCFlushRange(ptr::from_ref(self).cast_mut().cast(), 32) };
+        PreparedDisplayList(self)
+    }
+}
+
+impl PreparedDisplayList {
+    unsafe fn draw(&self) {
+        unsafe { GX_CallDispList(ptr::from_ref(self.0).cast(), 32) }
+    }
+}
 
 #[rustfmt::skip]
 static TRIANGLE_LIST: DisplayList = DisplayList([
@@ -127,13 +199,13 @@ pub extern "C" fn main() -> c_int {
             return 1;
         }
         let mode_ref = &*mode;
-        let Some(framebuffer0) = HeapBuffer::from_raw(SYS_AllocateFramebuffer(mode)) else {
+        let Some(framebuffer0) = Framebuffer::new(mode_ref) else {
             return 1;
         };
-        let Some(framebuffer1) = HeapBuffer::from_raw(SYS_AllocateFramebuffer(mode)) else {
+        let Some(framebuffer1) = Framebuffer::new(mode_ref) else {
             return 1;
         };
-        let Some(fifo) = HeapBuffer::from_raw(memalign(32, FIFO_SIZE)) else {
+        let Some(fifo) = AlignedBuffer::new_zeroed(FIFO_SIZE) else {
             return 1;
         };
         let mut display = FrameState::new([framebuffer0, framebuffer1]);
@@ -151,7 +223,6 @@ pub extern "C" fn main() -> c_int {
             VIDEO_WaitVSync();
         }
 
-        ptr::write_bytes(fifo.as_ptr().cast::<u8>(), 0, FIFO_SIZE);
         GX_Init(fifo.as_ptr(), FIFO_SIZE as u32);
         GX_SetViewport(
             0.0,
@@ -216,12 +287,7 @@ pub extern "C" fn main() -> c_int {
         GX_SetTevOrder(0, GX_TEXCOORD_NULL, GX_TEXMAP_NULL, GX_COLOR0A0 as u8);
         GX_SetTevOp(0, GX_PASSCLR);
         GX_SetCullMode(GX_CULL_NONE);
-        DCFlushRange(
-            ptr::addr_of!(TRIANGLE_LIST).cast_mut().cast(),
-            core::mem::size_of::<DisplayList>() as u32,
-        );
-
-        let mut scene = TriangleScene::new(aspect);
+        let mut scene = TriangleScene::new(aspect, TRIANGLE_LIST.prepare());
         while RUNNING.load(Ordering::Relaxed) {
             WPAD_ScanPads();
             for channel in 0..WPAD_CHANNEL_COUNT {
