@@ -1,4 +1,4 @@
-# Bastiaan's Wii Examples
+# Wii Examples
 
 Some Wii homebrew C and Rust example programs
 
