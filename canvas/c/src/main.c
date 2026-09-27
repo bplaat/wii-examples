@@ -144,11 +144,11 @@ int main(void) {
 
             // Set cube matrix
             Mtx cube_matrix;
-            guMtxRotDeg(cube_matrix, 'x', rotation);
+            ps_guMtxRotRad(cube_matrix, 'x', DegToRad(rotation));
             Mtx temp_matrix;
-            guMtxRotDeg(temp_matrix, 'y', rotation);
-            guMtxConcat(cube_matrix, temp_matrix, cube_matrix);
-            guMtxTransApply(cube_matrix, cube_matrix, 0, 0, -8);
+            ps_guMtxRotRad(temp_matrix, 'y', DegToRad(rotation));
+            ps_guMtxConcat(cube_matrix, temp_matrix, cube_matrix);
+            ps_guMtxTransApply(cube_matrix, cube_matrix, 0, 0, -8);
             GX_LoadPosMtxImm(cube_matrix, GX_PNMTX0);
 
             // Draw cube
@@ -212,12 +212,12 @@ int main(void) {
         // ### Draw HUD ###
         canvas_begin(screen_width, screen_height);
 
-        guMtxRotDeg(canvas.transform_matrix, 'z', rotation);
+        ps_guMtxRotRad(canvas.transform_matrix, 'z', DegToRad(rotation));
         canvas_draw_image(&dirt_grass_texture, 50, 100, 100, 100, 0xffffffff);
         canvas_draw_image(&dirt_grass_texture, 100, 150, 100, 100, 0xff0000ff);
         canvas_draw_image(&dirt_grass_texture, 150, 200, 100, 100, 0x00ff00ff);
         canvas_draw_image(&dirt_grass_texture, 200, 250, 100, 100, 0x0000ffff);
-        guMtxIdentity(canvas.transform_matrix);
+        ps_guMtxIdentity(canvas.transform_matrix);
 
         float y = 8;
         canvas_fill_text("Hello Wii 🏠!", 8, y, 64, 0xffffffff);

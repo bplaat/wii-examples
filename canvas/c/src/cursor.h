@@ -74,9 +74,9 @@ static void cursor_render(void) {
     for (int32_t i = 0; i < 4; i++) {
         Cursor* cursor = &cursors[i];
         if (cursor->enabled) {
-            guMtxRotDeg(canvas.transform_matrix, 'z', cursor->angle);
+            ps_guMtxRotRad(canvas.transform_matrix, 'z', DegToRad(cursor->angle));
             canvas_draw_image(&cursor->texture, cursor->x - 96 / 2, cursor->y - 96 / 2, 96, 96, 0xffffffff);
         }
     }
-    guMtxIdentity(canvas.transform_matrix);
+    ps_guMtxIdentity(canvas.transform_matrix);
 }

@@ -113,10 +113,10 @@ int main(void) {
             for (int32_t x = -2; x < 2; x++) {
                 Mtx matrix;
                 Mtx temp;
-                guMtxRotDeg(matrix, 'x', rotation);
-                guMtxRotDeg(temp, 'y', rotation);
-                guMtxConcat(matrix, temp, matrix);
-                guMtxTransApply(matrix, matrix, x * 2 + 1, y * 2 + 1, -10);
+                ps_guMtxRotRad(matrix, 'x', DegToRad(rotation));
+                ps_guMtxRotRad(temp, 'y', DegToRad(rotation));
+                ps_guMtxConcat(matrix, temp, matrix);
+                ps_guMtxTransApply(matrix, matrix, x * 2 + 1, y * 2 + 1, -10);
                 GX_LoadPosMtxImm(matrix, GX_PNMTX0);
                 GX_CallDispList(triangle_list, sizeof(triangle_list));
             }

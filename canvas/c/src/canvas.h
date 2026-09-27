@@ -24,7 +24,7 @@ static bool canvas_init(void) {
 
 static void canvas_begin(uint32_t screen_width, uint32_t screen_height) {
     // Reset canvas state
-    guMtxIdentity(canvas.transform_matrix);
+    ps_guMtxIdentity(canvas.transform_matrix);
 
     // Set orthographic matrix
     Mtx44 projection_matrix;
@@ -72,7 +72,7 @@ static void canvas_draw_image(GXTexObj* texture, float x, float y, float width, 
     };
     // clang-format on
     Mtx transformed_matrix;
-    guMtxConcat(matrix, canvas.transform_matrix, transformed_matrix);
+    ps_guMtxConcat(matrix, canvas.transform_matrix, transformed_matrix);
     GX_LoadPosMtxImm(transformed_matrix, GX_PNMTX0);
 
     // PNG top rows map to t=0 for this canvas projection.
@@ -171,7 +171,7 @@ static void canvas_fill_text(const char* text, float x, float y, float text_size
         };
         // clang-format on
         Mtx transformed_matrix;
-        guMtxConcat(matrix, canvas.transform_matrix, transformed_matrix);
+        ps_guMtxConcat(matrix, canvas.transform_matrix, transformed_matrix);
         GX_LoadPosMtxImm(transformed_matrix, GX_PNMTX0);
 
         // Sample inside the glyph so bilinear filtering cannot read its neighbors.
