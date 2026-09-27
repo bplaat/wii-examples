@@ -1,0 +1,10 @@
+[build]
+target = ".cargo/wii.json"
+
+[target.wii]
+linker = "./.cargo/linker.sh"
+runner = "./.cargo/runner.sh"
+
+[unstable]
+build-std = ["core", "alloc", "compiler_builtins"]
+json-target-spec = true
