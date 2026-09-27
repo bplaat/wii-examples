@@ -3,20 +3,29 @@
 #include <gccore.h>
 
 #include "canvas.h"
-#include "cursor1_png.h"
-#include "cursor2_png.h"
-#include "cursor3_png.h"
-#include "cursor4_png.h"
 #include "texture.h"
+
+static const uint8_t cursor1_png[] = {
+    #embed "assets/cursor1.png"
+};
+static const uint8_t cursor2_png[] = {
+    #embed "assets/cursor2.png"
+};
+static const uint8_t cursor3_png[] = {
+    #embed "assets/cursor3.png"
+};
+static const uint8_t cursor4_png[] = {
+    #embed "assets/cursor4.png"
+};
 
 Cursor cursors[4] = {0};
 
 void cursor_init(void) {
     // Load cursor textures
-    texture_load_png_rgba8(&cursors[0].texture, cursor1_png, cursor1_png_size);
-    texture_load_png_rgba8(&cursors[1].texture, cursor2_png, cursor2_png_size);
-    texture_load_png_rgba8(&cursors[2].texture, cursor3_png, cursor3_png_size);
-    texture_load_png_rgba8(&cursors[3].texture, cursor4_png, cursor4_png_size);
+    texture_load_png_rgba8(&cursors[0].texture, cursor1_png, sizeof(cursor1_png));
+    texture_load_png_rgba8(&cursors[1].texture, cursor2_png, sizeof(cursor2_png));
+    texture_load_png_rgba8(&cursors[2].texture, cursor3_png, sizeof(cursor3_png));
+    texture_load_png_rgba8(&cursors[3].texture, cursor4_png, sizeof(cursor4_png));
 
     // Read cursors state
     WPAD_ScanPads();

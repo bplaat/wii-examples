@@ -10,12 +10,15 @@
 #include <wiiuse/wpad.h>
 
 #include "blocks_texture.h"
-#include "blocks_texture_tpl.h"
 #include "canvas.h"
 #include "cursor.h"
 
 #define FIFO_SIZE (256 * 1024)
 #define CLEAR_COLOR ((GXColor){128, 128, 128, 255})
+
+_Alignas(32) static const uint8_t blocks_texture_tpl[] = {
+    #embed "../target/blocks_texture.tpl"
+};
 
 static volatile bool running = true;
 
@@ -87,7 +90,7 @@ int main(void) {
 
     // Load textures
     TPLFile blocks_tpl;
-    if (TPL_OpenTPLFromMemory(&blocks_tpl, (void*)blocks_texture_tpl, blocks_texture_tpl_size) != 1)
+    if (TPL_OpenTPLFromMemory(&blocks_tpl, (void*)blocks_texture_tpl, sizeof(blocks_texture_tpl)) != 1)
         return 1;
     GXTexObj dirt_grass_texture;
     if (TPL_GetTexture(&blocks_tpl, dirt_grass, &dirt_grass_texture) != 0)

@@ -3,12 +3,20 @@
 #include <malloc.h>
 
 #include "font.h"
-#include "font_png.h"
 #include "texture.h"
+
+static const uint8_t font_png[] = {
+    #embed "assets/font.png"
+};
 
 Canvas canvas;
 
-_Alignas(32) uint16_t blank_pixels[16] = {0xffff};
+_Alignas(32) static uint16_t blank_pixels[16] = {
+    0xffff, 0xffff, 0xffff, 0xffff,
+    0xffff, 0xffff, 0xffff, 0xffff,
+    0xffff, 0xffff, 0xffff, 0xffff,
+    0xffff, 0xffff, 0xffff, 0xffff,
+};
 
 void canvas_init(void) {
     // Create blank texture
@@ -16,7 +24,7 @@ void canvas_init(void) {
     GX_InitTexObj(&canvas.blank_texture, blank_pixels, 1, 1, GX_TF_RGB565, GX_CLAMP, GX_CLAMP, GX_FALSE);
 
     // Load font texture
-    texture_load_png_rgba8(&canvas.font_texture, font_png, font_png_size);
+    texture_load_png_rgba8(&canvas.font_texture, font_png, sizeof(font_png));
 }
 
 void canvas_begin(uint32_t screen_width, uint32_t screen_height) {
@@ -56,7 +64,7 @@ void canvas_end(void) {
     GX_Flush();
 }
 
-inline void canvas_fill_rect(float x, float y, float width, float height, uint32_t color) {
+void canvas_fill_rect(float x, float y, float width, float height, uint32_t color) {
     canvas_draw_image(&canvas.blank_texture, x, y, width, height, color);
 }
 
@@ -72,23 +80,24 @@ void canvas_draw_image(GXTexObj* texture, float x, float y, float width, float h
         {0, 0, 1, 0}
     };
     // clang-format on
-    guMtxConcat(matrix, canvas.transform_matrix, matrix);
-    GX_LoadPosMtxImm(matrix, GX_PNMTX0);
+    Mtx transformed_matrix;
+    guMtxConcat(matrix, canvas.transform_matrix, transformed_matrix);
+    GX_LoadPosMtxImm(transformed_matrix, GX_PNMTX0);
 
-    // PNG top rows map to t=1 for this canvas projection.
+    // PNG top rows map to t=0 for this canvas projection.
     GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
     GX_Position2f32(0.5, -0.5);
     GX_Color1u32(color);
-    GX_TexCoord2f32(1, 1);
+    GX_TexCoord2f32(1, 0);
     GX_Position2f32(0.5, 0.5);
     GX_Color1u32(color);
-    GX_TexCoord2f32(1, 0);
+    GX_TexCoord2f32(1, 1);
     GX_Position2f32(-0.5, 0.5);
     GX_Color1u32(color);
-    GX_TexCoord2f32(0, 0);
+    GX_TexCoord2f32(0, 1);
     GX_Position2f32(-0.5, -0.5);
     GX_Color1u32(color);
-    GX_TexCoord2f32(0, 1);
+    GX_TexCoord2f32(0, 0);
     GX_End();
 }
 
@@ -169,13 +178,15 @@ void canvas_fill_text(const char* text, float x, float y, float text_size, uint3
             {0, 0, 1, 0}
         };
         // clang-format on
-        GX_LoadPosMtxImm(matrix, GX_PNMTX0);
+        Mtx transformed_matrix;
+        guMtxConcat(matrix, canvas.transform_matrix, transformed_matrix);
+        GX_LoadPosMtxImm(transformed_matrix, GX_PNMTX0);
 
         // Sample inside the glyph so bilinear filtering cannot read its neighbors.
         float left = (font_char->x + 0.5f) / 480.f;
-        float top = 1.f - (font_char->y + 0.5f) / 480.f;
+        float top = (font_char->y + 0.5f) / 480.f;
         float right = (font_char->x + font_char->w - 0.5f) / 480.f;
-        float bottom = 1.f - (font_char->y + font_char->h - 0.5f) / 480.f;
+        float bottom = (font_char->y + font_char->h - 0.5f) / 480.f;
         uint32_t c = font_char->c ? 0xffffffff : color;
 
         GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
