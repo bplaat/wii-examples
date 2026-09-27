@@ -3,9 +3,10 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use crate::libogc::*;
+use crate::memory::{AlignedBuffer, Framebuffer};
+use crate::render::*;
 use crate::texture::Texture;
 use alloc::format;
-use alloc::vec;
 use core::ffi::{c_int, c_void};
 use core::panic::PanicInfo;
 use core::ptr;
@@ -13,21 +14,28 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 mod font;
 mod libogc;
+mod memory;
 mod png;
+mod render;
 mod texture;
 
 const FIFO_SIZE: usize = 256 * 1024;
-const CLEAR_COLOR: GXColor = GXColor::new(128, 128, 128, 255);
+const CLEAR_COLOR: GXColor = GXColor {
+    r: 128,
+    g: 128,
+    b: 128,
+    a: 255,
+};
 static RUNNING: AtomicBool = AtomicBool::new(true);
 
 struct FrameState {
-    buffers: [HeapBuffer; 2],
+    buffers: [Framebuffer; 2],
     current: usize,
     first_frame: bool,
 }
 
 impl FrameState {
-    fn new(buffers: [HeapBuffer; 2]) -> Self {
+    fn new(buffers: [Framebuffer; 2]) -> Self {
         Self {
             buffers,
             current: 0,
@@ -36,8 +44,7 @@ impl FrameState {
     }
 
     fn scanout(&self) -> *mut c_void {
-        (self.buffers[self.current].as_ptr() as u32)
-            .wrapping_add(SYS_BASE_UNCACHED.wrapping_sub(SYS_BASE_CACHED)) as *mut c_void
+        self.buffers[self.current].scanout()
     }
 
     unsafe fn present(&mut self) {
@@ -158,7 +165,7 @@ impl CanvasScene {
             GX_SetTevOp(GX_TEVSTAGE0, GX_MODULATE);
 
             let mut transform = [[0.0; 4]; 3];
-            guMtxRotDeg(&mut transform, b'z' as core::ffi::c_char, self.rotation);
+            rotate_degrees(&mut transform, b'z' as core::ffi::c_char, self.rotation);
             GX_LoadPosMtxImm(&transform, GX_PNMTX0);
             for (x, y, color) in [
                 (50.0, 100.0, 0xffff_ffff),
@@ -178,7 +185,7 @@ impl CanvasScene {
             }
 
             let mut identity = [[0.0; 4]; 3];
-            guMtxIdentity(&mut identity);
+            ps_guMtxIdentity(&mut identity);
             GX_LoadPosMtxImm(&identity, GX_PNMTX0);
             draw_text(
                 &self.assets.font,
@@ -216,7 +223,7 @@ impl CanvasScene {
             );
 
             let mut cursor_matrix = [[0.0; 4]; 3];
-            guMtxRotDeg(&mut cursor_matrix, b'z' as core::ffi::c_char, cursor.angle);
+            rotate_degrees(&mut cursor_matrix, b'z' as core::ffi::c_char, cursor.angle);
             draw_image(
                 &self.assets.cursors[0],
                 &cursor_matrix,
@@ -257,13 +264,15 @@ pub extern "C" fn app_main() -> c_int {
             return 1;
         }
         let mode_ref = &*mode;
-        let Some(framebuffer0) = HeapBuffer::from_raw(SYS_AllocateFramebuffer(mode)) else {
+        let Some(framebuffer0) = Framebuffer::new(mode_ref) else {
             return 1;
         };
-        let Some(framebuffer1) = HeapBuffer::from_raw(SYS_AllocateFramebuffer(mode)) else {
+        let Some(framebuffer1) = Framebuffer::new(mode_ref) else {
             return 1;
         };
-        let mut fifo = vec![0; FIFO_SIZE];
+        let Some(fifo) = AlignedBuffer::new_zeroed(FIFO_SIZE) else {
+            return 1;
+        };
         let mut display = FrameState::new([framebuffer0, framebuffer1]);
         let aspect = if CONF_GetAspectRatio() == CONF_ASPECT_16_9 {
             16.0 / 9.0
@@ -278,7 +287,7 @@ pub extern "C" fn app_main() -> c_int {
             VIDEO_WaitVSync();
         }
 
-        GX_Init(fifo.as_mut_ptr().cast(), FIFO_SIZE as u32);
+        GX_Init(fifo.as_ptr(), fifo.size());
         GX_SetViewport(
             0.0,
             0.0,
