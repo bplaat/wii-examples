@@ -1,46 +1,40 @@
-use crate::libogc::{GXTexObj, TPL_CloseTPLFile, TPL_GetTexture, TPL_OpenTPLFromMemory, TPLFile};
+use crate::libogc::{DCFlushRange, GX_FALSE, GX_InitTexObj, GX_REPEAT, GX_TF_CMPR, GXTexObj};
 use crate::world::Material;
+
+const IMAGE_SIZE: usize = 128 * 128 / 2;
+
+#[repr(align(32))]
+struct AlignedImages([u8; IMAGE_SIZE * Material::COUNT]);
+
+static IMAGES: AlignedImages =
+    AlignedImages(*include_bytes!(concat!(env!("OUT_DIR"), "/materials.bin")));
 
 pub struct Materials {
     textures: [GXTexObj; Material::COUNT],
-    tpl: TPLFile,
 }
 
 impl Materials {
-    pub fn load(bytes: &'static [u8]) -> Option<Self> {
-        let mut tpl = TPLFile {
-            kind: 0,
-            texture_count: 0,
-            texture_descriptors: core::ptr::null_mut(),
-            file: core::ptr::null_mut(),
-        };
-        let opened = unsafe {
-            TPL_OpenTPLFromMemory(
-                &mut tpl,
-                bytes.as_ptr().cast_mut().cast(),
-                bytes.len() as u32,
-            )
-        };
-        if opened != 1 {
-            return None;
-        }
+    pub fn load() -> Self {
         let mut textures = [GXTexObj { val: [0; 8] }; Material::COUNT];
-        for (material, texture) in Material::ALL.into_iter().zip(&mut textures) {
-            if unsafe { TPL_GetTexture(&mut tpl, material.index() as i32, texture) } != 0 {
-                unsafe { TPL_CloseTPLFile(&mut tpl) };
-                return None;
+        unsafe {
+            DCFlushRange(IMAGES.0.as_ptr().cast_mut().cast(), IMAGES.0.len() as u32);
+            for (index, texture) in textures.iter_mut().enumerate() {
+                GX_InitTexObj(
+                    texture,
+                    IMAGES.0.as_ptr().add(index * IMAGE_SIZE).cast_mut().cast(),
+                    128,
+                    128,
+                    GX_TF_CMPR,
+                    GX_REPEAT,
+                    GX_REPEAT,
+                    GX_FALSE,
+                );
             }
         }
-        Some(Self { textures, tpl })
+        Self { textures }
     }
 
     pub fn get(&self, material: Material) -> &GXTexObj {
         &self.textures[material.index()]
-    }
-}
-
-impl Drop for Materials {
-    fn drop(&mut self) {
-        unsafe { TPL_CloseTPLFile(&mut self.tpl) }
     }
 }

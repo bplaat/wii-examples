@@ -3,10 +3,9 @@
 
 use crate::libogc::*;
 use crate::materials::Materials;
+use crate::memory::{AlignedBuffer, Framebuffer};
 use crate::mesh::Mesh;
 use crate::world::World;
-use alloc::vec;
-use alloc::vec::Vec;
 use core::ffi::{c_int, c_void};
 use core::panic::PanicInfo;
 use core::ptr;
@@ -14,28 +13,27 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 mod libogc;
 mod materials;
+mod memory;
 mod mesh;
 mod world;
 
 const FIFO_SIZE: usize = 256 * 1024;
-const CLEAR_COLOR: GXColor = GXColor::new(46, 84, 158, 255);
+const CLEAR_COLOR: GXColor = GXColor {
+    r: 46,
+    g: 84,
+    b: 158,
+    a: 255,
+};
 static RUNNING: AtomicBool = AtomicBool::new(true);
 
-#[repr(align(32))]
-struct AlignedTpl<const N: usize>([u8; N]);
-
-static MATERIALS_TPL: AlignedTpl<
-    { include_bytes!(concat!(env!("OUT_DIR"), "/materials.tpl")).len() },
-> = AlignedTpl(*include_bytes!(concat!(env!("OUT_DIR"), "/materials.tpl")));
-
 struct FrameState {
-    buffers: [HeapBuffer; 2],
+    buffers: [Framebuffer; 2],
     current: usize,
     first_frame: bool,
 }
 
 impl FrameState {
-    fn new(buffers: [HeapBuffer; 2]) -> Self {
+    fn new(buffers: [Framebuffer; 2]) -> Self {
         Self {
             buffers,
             current: 0,
@@ -44,8 +42,7 @@ impl FrameState {
     }
 
     fn scanout(&self) -> *mut c_void {
-        (self.buffers[self.current].as_ptr() as u32)
-            .wrapping_add(SYS_BASE_UNCACHED.wrapping_sub(SYS_BASE_CACHED)) as *mut c_void
+        self.buffers[self.current].scanout()
     }
 
     fn present(&mut self) {
@@ -67,7 +64,7 @@ impl FrameState {
 
 struct Demo {
     display: FrameState,
-    _fifo: Vec<u8>,
+    _fifo: AlignedBuffer,
     materials: Materials,
     mesh: Mesh,
     angle: f32,
@@ -80,10 +77,11 @@ impl Demo {
             VIDEO_SetBlack(true);
             let mode = VIDEO_GetPreferredMode(ptr::null_mut());
             let mode_ref = mode.as_ref()?;
-            let first = HeapBuffer::from_raw(SYS_AllocateFramebuffer(mode))?;
-            let second = HeapBuffer::from_raw(SYS_AllocateFramebuffer(mode))?;
+            let first = Framebuffer::new(mode_ref)?;
+            let second = Framebuffer::new(mode_ref)?;
             let display = FrameState::new([first, second]);
-            let mut fifo = vec![0; FIFO_SIZE];
+            let mut fifo = AlignedBuffer::new(FIFO_SIZE)?;
+            fifo.zero();
             let aspect = if CONF_GetAspectRatio() == CONF_ASPECT_16_9 {
                 16.0 / 9.0
             } else {
@@ -98,7 +96,7 @@ impl Demo {
                 VIDEO_WaitVSync();
             }
 
-            GX_Init(fifo.as_mut_ptr().cast(), FIFO_SIZE as u32);
+            GX_Init(fifo.as_ptr(), fifo.size());
             GX_SetViewport(
                 0.0,
                 0.0,
@@ -142,7 +140,7 @@ impl Demo {
             GX_SetZMode(GX_ENABLE, GX_ALWAYS, GX_TRUE);
             GX_CopyDisp(display.scanout(), GX_TRUE);
 
-            let materials = Materials::load(&MATERIALS_TPL.0)?;
+            let materials = Materials::load();
             configure_pipeline();
             let world = World::generate(gettime() as u32);
             let mesh = Mesh::build(&world.faces_by_material())?;

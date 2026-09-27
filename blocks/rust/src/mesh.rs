@@ -1,5 +1,6 @@
 use crate::libogc::*;
 use crate::materials::Materials;
+use crate::memory::AlignedBuffer;
 use crate::world::{Face, Material};
 use alloc::vec::Vec;
 
@@ -7,7 +8,7 @@ const UV: [[u8; 2]; 4] = [[0, 1], [1, 1], [1, 0], [0, 0]];
 const MAX_FACES_PER_BATCH: usize = 16_000;
 
 struct DisplayList {
-    buffer: HeapBuffer,
+    buffer: AlignedBuffer,
     size: u32,
 }
 
@@ -31,21 +32,20 @@ impl Mesh {
                 .checked_add(batches.checked_mul(64)?)?
                 .checked_add(159)?
                 & !31;
-            let buffer = unsafe { HeapBuffer::from_raw(memalign(32, capacity)) }?;
+            let mut buffer = AlignedBuffer::new(capacity)?;
+            buffer.invalidate();
             unsafe {
-                DCInvalidateRange(buffer.as_ptr(), capacity as u32);
-                GX_BeginDispList(buffer.as_ptr(), capacity as u32);
+                GX_BeginDispList(buffer.as_ptr(), buffer.size());
                 for batch in instances.chunks(MAX_FACES_PER_BATCH) {
                     GX_Begin(GX_QUADS, GX_VTXFMT0, (batch.len() * 4) as u16);
                     for face in batch {
                         emit_face(face, material == Material::Water);
                     }
-                    GX_End();
                 }
             }
 
             let size = unsafe { GX_EndDispList() };
-            if size == 0 {
+            if size == 0 || size > buffer.size() || !size.is_multiple_of(32) {
                 return None;
             }
             lists[material.index()] = Some(DisplayList { buffer, size });
@@ -93,4 +93,14 @@ fn emit_face(face: &Face, water: bool) {
             pipe_u8(uv[1]);
         }
     }
+}
+
+#[inline]
+unsafe fn pipe_u8(value: u8) {
+    unsafe { core::ptr::write_volatile(wgPipe.cast::<u8>(), value) }
+}
+
+#[inline]
+unsafe fn pipe_f32(value: f32) {
+    unsafe { core::ptr::write_volatile(wgPipe.cast::<f32>(), value) }
 }

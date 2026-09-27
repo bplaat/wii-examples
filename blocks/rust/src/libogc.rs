@@ -1,8 +1,6 @@
 #![allow(non_snake_case)]
 
-use core::alloc::{GlobalAlloc, Layout};
 use core::ffi::{c_int, c_void};
-use core::ptr::NonNull;
 
 pub const SYS_BASE_CACHED: u32 = 0x8000_0000;
 pub const SYS_BASE_UNCACHED: u32 = 0xc000_0000;
@@ -26,6 +24,8 @@ pub const GX_F32: u32 = 4;
 pub const GX_U8: u32 = 0;
 pub const GX_CLR_RGBA: u32 = 1;
 pub const GX_RGBA8: u32 = 5;
+pub const GX_TF_CMPR: u8 = 14;
+pub const GX_REPEAT: u8 = 1;
 pub const GX_TEX_ST: u32 = 1;
 pub const GX_TEXCOORD0: u16 = 0;
 pub const GX_TEXMAP0: u32 = 0;
@@ -83,24 +83,10 @@ pub struct GXColor {
     pub a: u8,
 }
 
-impl GXColor {
-    pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
-        Self { r, g, b, a }
-    }
-}
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct GXTexObj {
     pub val: [u32; 8],
-}
-
-#[repr(C)]
-pub struct TPLFile {
-    pub kind: c_int,
-    pub texture_count: c_int,
-    pub texture_descriptors: *mut c_void,
-    pub file: *mut c_void,
 }
 
 #[repr(C)]
@@ -119,39 +105,6 @@ pub type WpadPowerCallback = Option<extern "C" fn(c_int)>;
 pub struct GXFifoObj {
     _private: [u8; 0],
 }
-
-pub struct HeapBuffer(NonNull<c_void>);
-
-impl HeapBuffer {
-    pub unsafe fn from_raw(pointer: *mut c_void) -> Option<Self> {
-        NonNull::new(pointer).map(Self)
-    }
-
-    pub fn as_ptr(&self) -> *mut c_void {
-        self.0.as_ptr()
-    }
-}
-
-impl Drop for HeapBuffer {
-    fn drop(&mut self) {
-        unsafe { free(self.0.as_ptr()) }
-    }
-}
-
-pub struct LibogcAllocator;
-
-unsafe impl GlobalAlloc for LibogcAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        unsafe { memalign(layout.align().max(32), layout.size().max(1)).cast() }
-    }
-
-    unsafe fn dealloc(&self, pointer: *mut u8, _layout: Layout) {
-        unsafe { free(pointer.cast()) }
-    }
-}
-
-#[global_allocator]
-static ALLOCATOR: LibogcAllocator = LibogcAllocator;
 
 unsafe extern "C" {
     pub static wgPipe: *mut c_void;
@@ -210,12 +163,23 @@ unsafe extern "C" {
     pub fn GX_LoadProjectionMtx(matrix: *const Mtx44, projection_type: u8);
     pub fn GX_LoadPosMtxImm(matrix: *const Mtx, index: u32);
     pub fn GX_LoadTexObj(obj: *const GXTexObj, map: u8);
+    pub fn GX_InitTexObj(
+        obj: *mut GXTexObj,
+        data: *mut c_void,
+        width: u16,
+        height: u16,
+        format: u8,
+        wrap_s: u8,
+        wrap_t: u8,
+        mipmap: u8,
+    );
     pub fn GX_Begin(primitive: u8, format: u8, vertices: u16);
     pub fn GX_BeginDispList(list: *mut c_void, size: u32);
     pub fn GX_EndDispList() -> u32;
     pub fn GX_CallDispList(list: *const c_void, size: u32);
     pub fn GX_DrawDone();
     pub fn DCInvalidateRange(pointer: *mut c_void, size: u32);
+    pub fn DCFlushRange(pointer: *mut c_void, size: u32);
 
     pub fn guPerspective(matrix: *mut Mtx44, fovy: f32, aspect: f32, near: f32, far: f32);
     pub fn guLookAt(
@@ -226,10 +190,6 @@ unsafe extern "C" {
     );
     pub fn gettime() -> u64;
 
-    pub fn TPL_OpenTPLFromMemory(tpl: *mut TPLFile, memory: *mut c_void, len: u32) -> c_int;
-    pub fn TPL_GetTexture(tpl: *mut TPLFile, id: c_int, texture: *mut GXTexObj) -> c_int;
-    pub fn TPL_CloseTPLFile(tpl: *mut TPLFile);
-
     pub fn WPAD_Init() -> c_int;
     pub fn WPAD_ScanPads() -> c_int;
     pub fn WPAD_ButtonsDown(channel: c_int) -> u32;
@@ -237,16 +197,3 @@ unsafe extern "C" {
     pub fn WPAD_SetPowerButtonCallback(callback: WpadPowerCallback);
     pub fn WPAD_Disconnect(channel: c_int) -> c_int;
 }
-
-#[inline]
-pub unsafe fn pipe_u8(value: u8) {
-    unsafe { core::ptr::write_volatile(wgPipe.cast::<u8>(), value) }
-}
-
-#[inline]
-pub unsafe fn pipe_f32(value: f32) {
-    unsafe { core::ptr::write_volatile(wgPipe.cast::<f32>(), value) }
-}
-
-#[inline]
-pub unsafe fn GX_End() {}
